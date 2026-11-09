@@ -77,3 +77,5 @@ npm run test:integration
 | `src/components/Chat/` | تاریخچه، میانبر، فرم و Markdown امن |
 | `src/hooks/` | چرخهٔ پاسخ، رابط تلگرام و صدا |
 | `src/store/` | نشست و ذخیرهٔ محلی حساب‌ها |
+
+<!-- vercel-sync: trigger deployment with updated allowed user ids -->
