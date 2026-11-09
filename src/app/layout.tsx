@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/vazirmatn";
 import "./globals.css";
+import "./experience.css";
 
 export const metadata: Metadata = {
   title: "ریروکا | Riruka",

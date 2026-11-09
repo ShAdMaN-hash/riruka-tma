@@ -40,6 +40,21 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   );
 }
 
+export function SafeMarkdown({ content }: { content: string }) {
+  return (
+    <div className="markdown" dir="auto">
+      <ReactMarkdown skipHtml disallowedElements={["img"]} remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}
+        urlTransform={(url) => { try { return new URL(url).protocol === "https:" ? url : ""; } catch { return ""; } }}
+        components={{
+          a: ({ href, children }) => href ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>,
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          table: ({ children }) => <div className="markdown-table"><table>{children}</table></div>,
+        }}
+      >{content}</ReactMarkdown>
+    </div>
+  );
+}
+
 export function MessageBubble({ message, name, plain = false }: { message: Message; name: string; plain?: boolean }) {
   const fromUser = message.role === "user";
   return (
@@ -52,18 +67,7 @@ export function MessageBubble({ message, name, plain = false }: { message: Messa
           {message.at > 0 && <time dateTime={new Date(message.at).toISOString()}>{time.format(message.at)}</time>}
         </div>
         <div className="bubble">
-          {fromUser || plain ? <p className="plain-message" dir="auto">{message.content}</p> : (
-            <div className="markdown" dir="auto">
-              <ReactMarkdown skipHtml disallowedElements={["img"]} remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}
-                urlTransform={(url) => { try { return new URL(url).protocol === "https:" ? url : ""; } catch { return ""; } }}
-                components={{
-                  a: ({ href, children }) => href ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>,
-                  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-                  table: ({ children }) => <div className="markdown-table"><table>{children}</table></div>,
-                }}
-              >{message.content}</ReactMarkdown>
-            </div>
-          )}
+          {fromUser || plain ? <p className="plain-message" dir="auto">{message.content}</p> : <SafeMarkdown content={message.content} />}
         </div>
       </div>
     </article>
