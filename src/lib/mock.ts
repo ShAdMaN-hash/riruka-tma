@@ -1,0 +1,37 @@
+import { reactionMood, type Turn } from "./chat";
+
+export function mockReply(messages: Turn[]) {
+  const input = messages[messages.length - 1].content;
+  const mood = reactionMood(input);
+  const variants = messages.filter(({ role }) => role === "user").length % 2;
+  let reply: string;
+
+  if (/کدنویسی|کد\s|کد$|پایتون|javascript|typescript|برنامه|\bcode\b/i.test(input)) {
+    reply = [
+      "باشه شادمان، یک مثال کوچیک می‌زنم. این تابع یک سلام فارسی می‌سازه.",
+      "\`\`\`ts\nfunction greet(name: string): string {\n  return \`سلام، \${name}!\`;\n}\n\ngreet(\"شادمان\");\n\`\`\`",
+      "در حالت آزمایشی این نمونه آماده‌ست. برای جواب به مسئلهٔ خودت، مدل زنده رو وصل کن.",
+    ].join("\n\n");
+  } else if (mood === "YANDERE") {
+    reply = [
+      "یکی دیگه؟ هومف… یه لحظه حسودیم شد. حالا بگو شادمان، چی شده که اسمش رو آوردی؟",
+      "حسود؟ من؟ … شاید یه کوچولو. تعریف کن ببینم دربارهٔ کی حرف می‌زنی.",
+    ][variants];
+  } else if (mood === "FLUSTERED") {
+    reply = [
+      "اوه… دوباره گفتی؟ صورتم داغ شد! خب، ممنون شادمان. خیلی هم خوشحال نشدم… شاید یه کم.",
+      "مـمن؟ زیبا؟ هوی، این‌طوری یهویی نگو! … ولی از شنیدنش بدم نیومد.",
+    ][variants];
+  } else if (mood === "HAPPY") {
+    reply = [
+      "وقتی این‌طوری حرف می‌زنی لبخندم می‌گیره. باشه، شادمان… امروز چه خبر؟",
+      "خوبه که برگشتی، شادمان. خب، امروز یه ماجرای خوب داری که برام تعریف کنی؟",
+    ][variants];
+  } else {
+    reply = [
+      "هومف… دارم گوش می‌دم، شادمان. اگه دلت می‌خواد بیشتر ازش بگو.",
+      "باشه، کنارتم. اول از همه بگو کدوم بخشش بیشتر ذهنت رو مشغول کرده؟",
+    ][variants];
+  }
+  return { reply, mood };
+}
