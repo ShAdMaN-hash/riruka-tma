@@ -14,7 +14,7 @@ import { useRirukaVoice } from "@/hooks/useRirukaVoice";
 import { useTasks } from "@/hooks/useTasks";
 import { useTelegram, useTelegramDialog } from "@/hooks/useTelegram";
 import { badges, faNumber, moodLabels, moods, type Mood, type Reaction } from "@/lib/chat";
-import { isActive } from "@/lib/tasks";
+import { isActive, taskProgress } from "@/lib/tasks";
 import { useRirukaStore } from "@/store/useRirukaStore";
 
 const touch = {
@@ -28,6 +28,12 @@ const views = [
   { id: "tasks", label: "میز کار", icon: ClipboardList },
   { id: "chat", label: "گفت‌وگو", icon: MessagesSquare },
 ] as const;
+type View = typeof views[number]["id"];
+
+function viewFromLocation(): View {
+  const section = new URLSearchParams(location.search).get("view");
+  return views.find(({ id }) => id === section)?.id ?? "studio";
+}
 
 export default function RirukaApp() {
   const telegram = useTelegram();
@@ -35,7 +41,7 @@ export default function RirukaApp() {
   const state = useRirukaStore();
   const [draft, setDraft] = useState("");
   const [mood, setMood] = useState<Mood>("TSUNDERE");
-  const [view, setView] = useState<typeof views[number]["id"]>("studio");
+  const [view, setCurrentView] = useState<View>("studio");
   const [line, setLine] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -51,7 +57,22 @@ export default function RirukaApp() {
   }, [play]);
   const { reply, source, send, cancel, resetSource, streaming } = useChatStream(telegram.initData, finish);
   const activeProfile = telegram.ready && state.profile === telegram.profile;
-  const desk = useTasks(activeProfile ? state.profile : null, telegram.initData);
+  const desk = useTasks(activeProfile ? state.profile : null, telegram.initData, view === "tasks");
+
+  useEffect(() => {
+    const restore = () => setCurrentView(viewFromLocation());
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+
+  function setView(next: View) {
+    setCurrentView(next);
+    const url = new URL(location.href);
+    if (next === "studio") url.searchParams.delete("view");
+    else url.searchParams.set("view", next);
+    if (url.href !== location.href) window.history.replaceState(window.history.state, "", url);
+  }
 
   useEffect(() => {
     if (!telegram.ready || state.profile === telegram.profile) return;
@@ -122,7 +143,8 @@ export default function RirukaApp() {
     </section>}
     <AffectionBar value={activeProfile ? state.affection : 0} />
   </aside>;
-  const doneCount = desk.tasks.filter(({ status }) => status === "done").length;
+  const doneCount = desk.tasks.filter((task) => taskProgress(task) === "done").length;
+  const openCount = desk.tasks.filter((task) => taskProgress(task) === "open").length;
   const activeCount = desk.tasks.filter(({ status }) => isActive(status)).length;
 
   return (
@@ -153,13 +175,14 @@ export default function RirukaApp() {
           </div>
           <button type="button" className="studio-activity" onClick={() => setView("tasks")}>
             <span className="activity-icon"><CircleCheck size={21} /></span>
-            <span><strong>کارهای من</strong><small>{faNumber.format(doneCount)} انجام‌شده · {faNumber.format(activeCount)} در جریان</small></span>
+            <span><strong>کارهای من</strong><small>{faNumber.format(doneCount)} انجام‌شده · {faNumber.format(openCount)} در جریان</small></span>
             <ArrowLeft size={17} />
           </button>
         </section>
       </main>}
-      {view === "tasks" && <TaskDesk key={state.profile ?? "loading"} tasks={desk.tasks} ready={activeProfile}
-        canRun={desk.canRun} onAdd={desk.add} onControl={desk.control} onToggle={desk.toggle} />}
+      <TaskDesk key={state.profile ?? "loading"} tasks={desk.tasks} visible={view === "tasks"} ready={activeProfile} initData={telegram.initData}
+        access={desk.access} onRecheck={desk.recheck} onAdd={desk.add} onAddItem={desk.addItem} onControl={desk.control} onToggle={desk.toggle}
+        onStart={desk.start} onRespond={desk.respond} onRemove={desk.remove} onEdit={desk.editDraft} />
       {view === "chat" && <main className="workspace">
         {avatar}
         <ChatContainer name={telegram.name} messages={activeProfile ? state.messages : []}
@@ -180,7 +203,7 @@ export default function RirukaApp() {
           </div>
         </ChatContainer>
       </main>}
-      <footer className="shell-footer"><Sparkles size={13} /> همراه خیالی شادمان <span lang="en" dir="ltr">RIRUKA · 02</span></footer>
+      <footer className="shell-footer"><Sparkles size={13} /> فضای شخصی شادمان <span lang="en" dir="ltr">RIRUKA · 2.0</span></footer>
       <dialog ref={dialogRef} onCancel={closeDialog} onClose={closeDialog} className="clear-dialog" aria-labelledby="clear-title" aria-describedby="clear-description">
         <div className="dialog-icon"><Trash2 size={22} /></div>
         <h2 id="clear-title">گفت‌وگو پاک شود؟</h2>

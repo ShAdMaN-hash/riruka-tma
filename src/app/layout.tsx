@@ -2,10 +2,11 @@ import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/vazirmatn";
 import "./globals.css";
 import "./experience.css";
+import "./mission.css";
 
 export const metadata: Metadata = {
   title: "ریروکا | Riruka",
-  description: "ریروکا، همراه خیالی و واکنش‌گرای شادمان در تلگرام.",
+  description: "ریروکا، استودیوی شخصیت و میز مأموریت شخصی برای تلگرام.",
   icons: { icon: "/favicon.ico" },
 };
 

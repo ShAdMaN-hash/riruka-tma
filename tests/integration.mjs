@@ -27,20 +27,59 @@ const stub = createServer(async (request, response) => {
         if (!run) {
           run = "run_fixture_" + (runs.size + 1);
           reservations.set(key, run);
-          runs.set(run, { polls: 0, input: job.input });
+          runs.set(run, { polls: 0, input: job.input, control: job.input === "بررسی کنترل" ? "approval" : null });
         }
         response.writeHead(202).end(JSON.stringify({ run_id: run, status: "started" }));
         return;
       }
-      const [, id, stop] = request.url.match(/\/runs\/([^/]+)(\/stop)?$/) ?? [];
+      const [, id, action] = request.url.match(/\/runs\/([^/]+)(?:\/(stop|events|approval|clarify))?$/) ?? [];
       const run = runs.get(id);
       if (!run) { response.writeHead(404).end("{}"); return; }
-      if (stop) {
+      if (action === "events") {
+        const replayAfter = Number(request.headers["last-event-id"] ?? -1);
+        const log = [
+          { seq: 1, event: "run.started" },
+          { seq: 2, event: "reasoning.available", text: "private fixture reasoning" },
+          { seq: 3, event: "tool.started", tool: "read_file", preview: "private tool args" },
+          { seq: 4, event: "tool.completed", tool: "read_file", error: true },
+          { seq: 5, event: "run.completed" },
+        ];
+        response.writeHead(200, { "Content-Type": "text/event-stream" }).end(log.filter((entry) => entry.seq > replayAfter)
+          .map((entry) => "data: " + JSON.stringify({ timestamp: Date.now() / 1000, ...entry }) + "\n\n").join(""));
+        return;
+      }
+      if (action === "approval" || action === "clarify") {
+        const decision = JSON.parse(Buffer.concat(chunks));
+        assert.equal(action, run.control);
+        assert.equal(request.method, "POST");
+        assert.equal(decision.request_id, "fixture-" + action);
+        assert.equal(decision.execution_generation, 3);
+        if (action === "approval") {
+          assert.deepEqual(Object.keys(decision).sort(), ["choice", "execution_generation", "request_id"]);
+          assert.equal(decision.choice, "once");
+          run.control = "clarify";
+        } else {
+          assert.deepEqual(Object.keys(decision).sort(), ["answer", "execution_generation", "request_id"]);
+          assert.equal(decision.answer, "پوشهٔ مستندات");
+          run.control = null;
+          run.polls = 1;
+        }
+        response.end(JSON.stringify({ accepted: true }));
+        return;
+      }
+      if (action === "stop") {
         assert.equal(request.method, "POST");
         run.stopped = true;
         response.end(JSON.stringify({ status: "stopping" }));
       } else {
         assert.equal(request.method, "GET");
+        if (run.control) {
+          const pending = run.control === "approval"
+            ? { prompt_id: "fixture-approval", kind: "approval", command: "cat docs/README.md", choices: ["once", "session", "deny"] }
+            : { prompt_id: "fixture-clarify", kind: "clarify", question: "کدام پوشه را بررسی کنم؟" };
+          response.end(JSON.stringify({ status: "running", execution_generation: 3, pending_controls: [pending] }));
+          return;
+        }
         const status = run.stopped ? "cancelled" : run.polls++ ? "completed" : "running";
         response.end(JSON.stringify({ status, output: status === "completed" ? "# خروجی ایجنت\n" + run.input : "" }));
       }
@@ -176,6 +215,13 @@ try {
   await Promise.all(slow.map(({ body }) => body.cancel()));
 
   const job = { id: randomUUID(), input: "گزارش آزمایشی" };
+  const anonymous = await task("availability", {}, "");
+  assert.equal(anonymous.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await anonymous.json(), { state: "telegram" });
+  assert.deepEqual(await (await task("availability", {}, signedInitData(user + 1))).json(), { state: "denied" });
+  assert.deepEqual(await (await task("availability", {}, signedInitData(user, 1))).json(), { state: "expired" });
+  assert.deepEqual(await (await task("availability", {})).json(), { state: "ready" });
+  assert.equal(runs.size, 0);
   assert.equal((await task("start", job, "")).status, 401);
   assert.equal((await task("start", job, signedInitData(user + 1))).status, 403);
   const start = await task("start", job);
@@ -184,6 +230,12 @@ try {
   assert.equal((await (await task("start", job)).json()).ticket, ticket);
   assert.equal(runs.size, 1);
   assert.equal((await task("status", { ticket }, signedInitData(user + 2))).status, 403);
+  assert.equal((await task("events", { ticket }, signedInitData(user + 2))).status, 403);
+  const timeline = await events(await task("events", { ticket, after: 1 }));
+  assert.deepEqual(timeline.map(({ seq }) => seq), [3, 4, 5]);
+  assert.deepEqual(timeline.map(({ activity }) => activity.kind), ["tool-start", "tool-error", "output"]);
+  assert.equal(timeline[0].activity.detail, "read_file");
+  assert.doesNotMatch(JSON.stringify(timeline), /private/);
   assert.equal((await (await task("status", { ticket })).json()).status, "running");
   const result = await (await task("status", { ticket })).json();
   assert.equal(result.status, "done");
@@ -192,7 +244,22 @@ try {
   assert.equal((await (await task("stop", { ticket: second.ticket })).json()).status, "stopping");
   assert.equal((await (await task("status", { ticket: second.ticket })).json()).status, "cancelled");
 
-  console.log("Production studio, chat SSE, authorization, and Hermes Runs admission, tracking, idempotency, and stopping verified.");
+  const gated = await (await task("start", { input: "بررسی کنترل", id: randomUUID() })).json();
+  const waiting = await (await task("status", { ticket: gated.ticket })).json();
+  assert.equal(waiting.status, "waiting");
+  assert.deepEqual(waiting.controls[0], { id: "fixture-approval", generation: 3, kind: "approval", prompt: "cat docs/README.md", allowOnce: true });
+  const response = { ticket: gated.ticket, controlId: "fixture-approval", generation: 3, choice: "once" };
+  assert.equal((await task("respond", response, signedInitData(user + 2))).status, 403);
+  assert.equal((await task("respond", { ...response, generation: 2 })).status, 409);
+  assert.equal((await task("respond", { ...response, choice: "session" })).status, 400);
+  assert.deepEqual(await (await task("respond", response)).json(), { accepted: true });
+  assert.equal((await task("respond", response)).status, 409);
+  const clarification = await (await task("status", { ticket: gated.ticket })).json();
+  assert.equal(clarification.controls[0].prompt, "کدام پوشه را بررسی کنم؟");
+  assert.deepEqual(await (await task("respond", { ticket: gated.ticket, controlId: "fixture-clarify", generation: 3, answer: "پوشهٔ مستندات" })).json(), { accepted: true });
+  assert.equal((await (await task("status", { ticket: gated.ticket })).json()).status, "done");
+
+  console.log("Production studio, chat and run SSE, reconnect cursor, scoped approvals, clarification, run idempotency and stopping verified.");
 } catch (error) {
   console.error(serverLog);
   throw error;

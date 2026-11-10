@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { DEVICE_LIMIT, isSource, isTurn, UUID, type Message } from "@/lib/chat";
-import { isActive, MAX_TASK_INPUT, MAX_TASK_OUTPUT, TASK_LIMIT, taskKinds, taskStatuses, type Task } from "@/lib/tasks";
+import { CHECKLIST_LIMIT, isActive, isRunActivity, MAX_ACTIVITY, MAX_TASK_INPUT, MAX_TASK_OUTPUT, TASK_LIMIT, taskKinds, taskStatuses, type Task } from "@/lib/tasks";
 
 type Saved = {
   version: 1;
@@ -22,8 +22,9 @@ type RirukaState = Saved & {
   addAffection: (points: number) => void;
   toggleSound: () => void;
   toggleGlasses: () => void;
-  addTask: (task: Task) => void;
-  updateTask: (profile: string, id: string, patch: Partial<Task>) => void;
+  addTask: (task: Task) => boolean;
+  removeTask: (profile: string, id: string) => void;
+  updateTask: (profile: string, id: string, patch: Partial<Task> | ((task: Task) => Partial<Task>)) => void;
 };
 
 const initial: Saved = { version: 1, sessionId: "", messages: [], affection: 0, sound: false, tasks: [], glasses: false };
@@ -54,9 +55,14 @@ function readProfile(id: string): Saved {
           typeof task.at === "number" && Number.isFinite(task.at) && typeof task.title === "string" &&
           typeof task.input === "string" && task.input.length <= MAX_TASK_INPUT &&
           typeof task.output === "string" && task.output.length <= MAX_TASK_OUTPUT &&
-          Array.isArray(task.items) && task.items.length <= 30 &&
+          Array.isArray(task.items) && task.items.length <= CHECKLIST_LIMIT &&
           task.items.every((part) => part && typeof part.text === "string" && typeof part.checked === "boolean"))
-      ).slice(0, TASK_LIMIT).map((task) => task.status === "queued" && !task.ticket ? { ...task, status: "unknown" } : task) : [],
+      ).slice(0, TASK_LIMIT).map((task) => ({
+        ...task,
+        status: task.status === "queued" && !task.ticket ? "unknown" : task.status,
+        activity: Array.isArray(task.activity) ? task.activity.filter(isRunActivity).slice(-MAX_ACTIVITY) : undefined,
+        controls: undefined,
+      })) : [],
     };
   } catch {
     return fresh;
@@ -76,24 +82,25 @@ export const useRirukaStore = create<RirukaState>((set, get) => ({
   addAffection: (points) => set(({ affection }) => ({ affection: Math.min(100, affection + points) })),
   toggleSound: () => set(({ sound }) => ({ sound: !sound })),
   toggleGlasses: () => set(({ glasses }) => ({ glasses: !glasses })),
-  addTask: (task) => set(({ tasks }) => {
-    const next = [task, ...tasks];
-    if (next.length > TASK_LIMIT) {
-      const settled = next.findLastIndex(({ status }) => !isActive(status) && status !== "unknown");
-      next.splice(settled > 0 ? settled : next.length - 1, 1);
-    }
-    return { tasks: next };
-  }),
+  addTask: (task) => {
+    if (!get().profile || get().tasks.length >= TASK_LIMIT) return false;
+    set(({ tasks }) => ({ tasks: [task, ...tasks] }));
+    return true;
+  },
+  removeTask: (profile, id) => {
+    if (get().profile !== profile) return;
+    set(({ tasks }) => ({ tasks: tasks.filter((task) => task.id !== id || isActive(task.status) || task.status === "unknown") }));
+  },
   updateTask: (profile, id, patch) => {
     if (get().profile !== profile) return;
-    set(({ tasks }) => ({ tasks: tasks.map((task) => task.id === id ? { ...task, ...patch } : task) }));
+    set(({ tasks }) => ({ tasks: tasks.map((task) => task.id === id ? { ...task, ...(typeof patch === "function" ? patch(task) : patch) } : task) }));
   },
 }));
 
 useRirukaStore.subscribe(({ profile, version, sessionId, messages, affection, sound, tasks, glasses }) => {
   if (!profile) return;
   try {
-    localStorage.setItem(key(profile), JSON.stringify({ version, sessionId, messages, affection, sound, tasks, glasses }));
+    localStorage.setItem(key(profile), JSON.stringify({ version, sessionId, messages, affection, sound, tasks: tasks.map(({ controls: _controls, ...task }) => task), glasses }));
   } catch {
     // The session continues in memory when storage is blocked or full.
   }
