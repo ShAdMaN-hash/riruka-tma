@@ -1,7 +1,7 @@
 "use client";
 
 import { Children, isValidElement, useState, type ReactNode } from "react";
-import { Check, Clipboard, Copy, Sparkles, UserRound } from "lucide-react";
+import { Check, Clipboard, Copy, Sparkles, Trash2, UserRound } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -55,8 +55,13 @@ export function SafeMarkdown({ content }: { content: string }) {
   );
 }
 
-export function MessageBubble({ message, name, plain = false }: { message: Message; name: string; plain?: boolean }) {
+export function MessageBubble({ message, name, plain = false, onRemove }: {
+  message: Message; name: string; plain?: boolean; onRemove?: (id: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
   const fromUser = message.role === "user";
+  const canAct = message.id !== "welcome" && !plain;
+
   return (
     <article className="message" data-role={message.role}>
       <span className="message-icon" aria-hidden="true">{fromUser ? <UserRound size={15} /> : <Sparkles size={16} />}</span>
@@ -65,6 +70,38 @@ export function MessageBubble({ message, name, plain = false }: { message: Messa
           <strong>{fromUser ? <bdi>{name}</bdi> : "ریروکا"}</strong>
           {message.source && <span>{sourceLabels[message.source]}</span>}
           {message.at > 0 && <time dateTime={new Date(message.at).toISOString()}>{time.format(message.at)}</time>}
+          {canAct && (
+            <span className="message-tools">
+              <button
+                type="button"
+                className="msg-action"
+                aria-label="کپی پیام"
+                title="کپی پیام"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(message.content);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1800);
+                  } catch {
+                    // Clipboard unavailable
+                  }
+                }}
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+              {onRemove && (
+                <button
+                  type="button"
+                  className="msg-action"
+                  aria-label="حذف پیام"
+                  title="حذف پیام"
+                  onClick={() => onRemove(message.id)}
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </span>
+          )}
         </div>
         <div className="bubble">
           {fromUser || plain ? <p className="plain-message" dir="auto">{message.content}</p> : <SafeMarkdown content={message.content} />}

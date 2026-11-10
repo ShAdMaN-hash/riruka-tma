@@ -31,6 +31,7 @@ export type Task = {
   status: TaskStatus;
   output: string;
   items: { text: string; checked: boolean }[];
+  pinned?: boolean;
   ticket?: string;
   note?: string;
   activity?: RunActivity[];
@@ -73,6 +74,21 @@ export function taskStatusLabel(task: Task) {
   return taskLabels[task.status];
 }
 
+export function sortTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    return b.at - a.at;
+  });
+}
+
+export function taskPromptForChat(task: Task): string {
+  const openItems = task.items.filter((item) => !item.checked).map((item) => `- ${item.text}`).slice(0, 8);
+  const details = openItems.length
+    ? `موارد باقی‌مانده:\n${openItems.join("\n")}`
+    : task.input.trim().slice(0, 500);
+  return `ریروکا، بیا دربارهٔ این مورد از میز کارم («${task.title}») هم‌فکری کنیم و اولویت‌هاش رو بچینیم:\n\n${details}`;
+}
+
 function searchKey(value: string) {
   return value.normalize("NFKC").toLowerCase()
     .replace(/[يى]/g, "ی").replace(/ك/g, "ک")
@@ -108,8 +124,8 @@ export function localTask(kind: Exclude<TaskKind, "hermes">, input: string) {
     paragraph.split(/(?<=[.!؟!?])\s+|\r?\n/).find((sentence) => sentence.trim().length >= 12)?.trim()
   ).filter((sentence): sentence is string => Boolean(sentence)))].slice(0, 8);
   if (kind === "workflow") {
-    const explicitActions = input.split(/\r?\n/).filter((line) => /^\s*(?:[-*•]|[۰-۹0-9]+[.)]|اقدام\s*[:：]|کار\s*[:：]|TODO\s*:)/i.test(line));
-    const items = linesFrom(explicitActions.map((line) => line.replace(/^\s*(?:اقدام|کار|TODO)\s*[:：]\s*/i, "")).join("\n"))
+    const explicitActions = input.split(/\r?\n/).filter((line) => /^\s*(?:[-*•]|[۰-۹0-9]+[.)]|اقدام\s*[:：]|کار\s*[:：]|وظیفه\s*[:：]|پیگیری\s*[:：]|TODO\s*:|ACTION\s*:)/i.test(line));
+    const items = linesFrom(explicitActions.map((line) => line.replace(/^\s*(?:اقدام|کار|وظیفه|پیگیری|TODO|ACTION)\s*[:：]\s*/i, "")).join("\n"))
       .slice(0, CHECKLIST_LIMIT).map((text) => ({ text, checked: false }));
     return {
       items,
@@ -118,11 +134,13 @@ export function localTask(kind: Exclude<TaskKind, "hermes">, input: string) {
       note: items.length ? undefined : "برای ساخت چک‌لیست، اقدام‌ها را با خط تیره یا «اقدام:» شروع کن.",
     };
   }
+  const wordCount = input.trim().split(/\s+/).filter(Boolean).length;
+  const readMinutes = Math.max(1, Math.ceil(wordCount / 180));
   return {
     items: [],
     output: [
       "# مرور یادداشت",
-      "تعداد واژه‌ها: " + input.trim().split(/\s+/).length,
+      `تعداد واژه‌ها: ${wordCount} · زمان تقریبی مطالعه: ${readMinutes} دقیقه`,
       "## جمله‌های آغازین بندها",
       ...(excerpts.length ? excerpts : lines.slice(0, 8)).map((text) => "- " + text.replace(/\n/g, " ")),
       "## متن مرتب‌شده",

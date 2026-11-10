@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowDownToLine, ArrowLeft, Braces, Check, ClipboardList, Copy, FileText, Layers3, PencilLine, Play, Plus, Radio, RefreshCw, Search, Square, Trash2, Upload } from "lucide-react";
+import { Activity, ArrowDownToLine, ArrowLeft, Braces, Check, CheckCheck, ClipboardList, Copy, FileText, Layers3, MessageSquareShare, PencilLine, Pin, Play, Plus, Radio, RefreshCw, Search, Square, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { TaskAccess } from "@/hooks/useTasks";
 import { faNumber } from "@/lib/chat";
@@ -40,9 +40,15 @@ function download(task: Task) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onAddItem, onControl, onStart, onRespond, onRemove, onEdit }: {
-  task: Task; visible: boolean; initData: string; canRun: boolean; activeRun: boolean; onToggle: (task: Task, index: number) => void;
+function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onAddItem, onRemoveItem, onToggleAll, onClearChecked, onTogglePin, onDiscuss, onControl, onStart, onRespond, onRemove, onEdit }: {
+  task: Task; visible: boolean; initData: string; canRun: boolean; activeRun: boolean;
+  onToggle: (task: Task, index: number) => void;
   onAddItem: (task: Task, text: string) => void;
+  onRemoveItem?: (task: Task, index: number) => void;
+  onToggleAll?: (task: Task) => void;
+  onClearChecked?: (task: Task) => void;
+  onTogglePin?: (task: Task) => void;
+  onDiscuss?: (task: Task) => void;
   onControl: (task: Task, action: "status" | "stop") => Promise<void>;
   onStart: (task: Task) => Promise<void>;
   onRespond: (task: Task, decision: RunDecision) => Promise<void>;
@@ -55,6 +61,7 @@ function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onA
   const [editing, setEditing] = useState<string | null>(null);
   const [remove, setRemove] = useState(false);
   const completed = task.items.filter((item) => item.checked).length;
+  const allChecked = task.items.length > 0 && completed === task.items.length;
   const recoverable = task.ticket || Date.now() - (task.startedAt ?? task.at) < 20 * 60 * 60 * 1000;
   const content = taskMarkdown(task);
   async function control(action: "status" | "stop") {
@@ -66,8 +73,28 @@ function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onA
   return (
     <article className="task-result">
       <header className="task-result-head">
-        <div><div className="task-eyebrow">{tools[task.kind].title}</div><h3>{task.title}</h3></div>
-        <span className="task-status" data-status={taskProgress(task)}>{taskStatusLabel(task)}</span>
+        <div>
+          <div className="task-eyebrow">
+            {tools[task.kind].title}
+            {task.pinned && <span className="pinned-badge"><Pin size={11} /> سنجاق‌شده</span>}
+          </div>
+          <h3>{task.title}</h3>
+        </div>
+        <div className="task-head-actions">
+          {onTogglePin && (
+            <button
+              type="button"
+              className="pin-button"
+              aria-pressed={ Boolean(task.pinned) }
+              onClick={() => onTogglePin(task)}
+              title={task.pinned ? "برداشتن سنجاق" : "سنجاق کردن در بالای فهرست"}
+            >
+              <Pin size={14} />
+              <span>{task.pinned ? "سنجاق‌شده" : "سنجاق"}</span>
+            </button>
+          )}
+          <span className="task-status" data-status={taskProgress(task)}>{taskStatusLabel(task)}</span>
+        </div>
       </header>
       {task.note && <p className="task-note" aria-live="polite">{task.note}</p>}
       {task.kind === "hermes" && <>
@@ -96,14 +123,41 @@ function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onA
       </>}
       {task.items.length > 0 && <>
         <div className="task-progress">
-          <span>{faNumber.format(completed)} از {faNumber.format(task.items.length)} انجام شده</span>
+          <div className="task-progress-row">
+            <span>{faNumber.format(completed)} از {faNumber.format(task.items.length)} انجام شده</span>
+            <div className="checklist-bulk-actions">
+              {onToggleAll && (
+                <button type="button" onClick={() => onToggleAll(task)}>
+                  <CheckCheck size={13} /> {allChecked ? "لغو تیک همه" : "تیک زدن همه"}
+                </button>
+              )}
+              {onClearChecked && completed > 0 && (
+                <button type="button" onClick={() => onClearChecked(task)}>
+                  <Trash2 size={13} /> پاکسازی انجام‌شده‌ها
+                </button>
+              )}
+            </div>
+          </div>
           <progress aria-label="پیشرفت چک‌لیست" value={completed} max={task.items.length} />
         </div>
         <ul className="task-checklist">
-          {task.items.map((item, index) => <li key={index}><label data-checked={item.checked}>
-            <input type="checkbox" checked={item.checked} onChange={() => onToggle(task, index)} />
-            <span dir="auto">{item.text}</span>
-          </label></li>)}
+          {task.items.map((item, index) => <li key={index} className="checklist-row">
+            <label data-checked={item.checked}>
+              <input type="checkbox" checked={item.checked} onChange={() => onToggle(task, index)} />
+              <span dir="auto">{item.text}</span>
+            </label>
+            {onRemoveItem && (
+              <button
+                type="button"
+                className="item-remove-btn"
+                aria-label="حذف این مورد"
+                title="حذف این مورد"
+                onClick={() => onRemoveItem(task, index)}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </li>)}
         </ul>
       </>}
       {(task.kind === "checklist" || task.kind === "workflow") && task.items.length < CHECKLIST_LIMIT &&
@@ -120,14 +174,21 @@ function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onA
         </form>}
       {task.output && <div className="task-output" tabIndex={0}><SafeMarkdown content={task.output} /></div>}
       <RunPanel task={task} visible={visible} initData={initData} canRun={canRun} onRespond={onRespond} />
-      {task.status === "done" && content && <div className="task-controls">
-        <button type="button" onClick={() => download(task)}><ArrowDownToLine size={16} /> دریافت Markdown</button>
-        <button type="button" onClick={async () => {
-          try { await navigator.clipboard.writeText(content); setCopy("کپی شد"); }
-          catch { setCopy("برای برداشتن خروجی از دریافت Markdown استفاده کن."); }
-        }}><Copy size={15} /> کپی خروجی</button>
+      <div className="task-controls">
+        {task.status === "done" && content && <>
+          <button type="button" onClick={() => download(task)}><ArrowDownToLine size={16} /> دریافت Markdown</button>
+          <button type="button" onClick={async () => {
+            try { await navigator.clipboard.writeText(content); setCopy("کپی شد"); }
+            catch { setCopy("برای برداشتن خروجی از دریافت Markdown استفاده کن."); }
+          }}><Copy size={15} /> کپی خروجی</button>
+        </>}
+        {onDiscuss && (
+          <button type="button" onClick={() => onDiscuss(task)}>
+            <MessageSquareShare size={15} /> مشورت با ریروکا
+          </button>
+        )}
         <span role="status">{copy}</span>
-      </div>}
+      </div>
       {!isActive(task.status) && task.status !== "unknown" && <div className="task-remove">
         {remove ? <>
           <span>این مورد از تابلوی همین دستگاه پاک می‌شود.</span>
@@ -139,11 +200,16 @@ function TaskDetails({ task, visible, initData, canRun, activeRun, onToggle, onA
   );
 }
 
-export function TaskDesk({ tasks, visible, ready, initData, access, onRecheck, onAdd, onAddItem, onControl, onToggle, onStart, onRespond, onRemove, onEdit }: {
+export function TaskDesk({ tasks, visible, ready, initData, access, onRecheck, onAdd, onAddItem, onRemoveItem, onToggleAll, onClearChecked, onTogglePin, onDiscuss, onControl, onToggle, onStart, onRespond, onRemove, onEdit }: {
   tasks: Task[]; visible: boolean; ready: boolean; initData: string; access: TaskAccess;
   onRecheck: () => void;
   onAdd: (kind: TaskKind, input: string) => string | undefined;
   onAddItem: (task: Task, text: string) => void;
+  onRemoveItem?: (task: Task, index: number) => void;
+  onToggleAll?: (task: Task) => void;
+  onClearChecked?: (task: Task) => void;
+  onTogglePin?: (task: Task) => void;
+  onDiscuss?: (task: Task) => void;
   onControl: (task: Task, action: "status" | "stop") => Promise<void>;
   onToggle: (task: Task, index: number) => void;
   onStart: (task: Task) => Promise<void>;
@@ -284,12 +350,14 @@ export function TaskDesk({ tasks, visible, ready, initData, access, onRecheck, o
                   setSelection(task.id);
                 }
               }}>
-                <span dir="auto">{task.title}</span><small>{taskStatusLabel(task)} · {formatDate.format(task.at)}</small>
+                <span dir="auto">{task.pinned ? "📌 " : ""}{task.title}</span><small>{taskStatusLabel(task)} · {formatDate.format(task.at)}</small>
               </button>)}
             </div>}
             {active ? <div ref={result} tabIndex={-1} className="task-selected">
               <TaskDetails key={active.id} task={active} visible={visible} initData={initData} canRun={canRun} activeRun={liveCount > 0}
-                onControl={onControl} onToggle={onToggle} onAddItem={onAddItem} onStart={onStart} onRespond={onRespond} onRemove={onRemove} onEdit={onEdit} />
+                onControl={onControl} onToggle={onToggle} onAddItem={onAddItem} onRemoveItem={onRemoveItem}
+                onToggleAll={onToggleAll} onClearChecked={onClearChecked} onTogglePin={onTogglePin} onDiscuss={onDiscuss}
+                onStart={onStart} onRespond={onRespond} onRemove={onRemove} onEdit={onEdit} />
             </div> : <p className="task-no-match" role="status">کاری با این جست‌وجو یا فیلتر پیدا نشد.</p>}
           </> : <div className="desk-empty"><ClipboardList size={28} /><strong>میزت برای کار اول آماده است.</strong>
             <p>از یک یادداشت شروع کن یا دستور اولین مأموریت را در صف بگذار.</p></div>}

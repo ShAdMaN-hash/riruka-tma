@@ -1,12 +1,12 @@
 "use client";
 
-import { Glasses, Hand, Sparkles } from "lucide-react";
+import { Glasses, Hand, Sparkles, WandSparkles } from "lucide-react";
 import { useEffect, useRef, type PointerEvent } from "react";
 import { moodLabels, type Mood } from "@/lib/chat";
 import { PortraitModel } from "./PortraitModel";
 
-export function RirukaAvatar({ mood, line, glasses, onGlasses, onInteract }: {
-  mood: Mood; line: string; glasses: boolean; onGlasses: () => void; onInteract: (hold?: boolean) => void;
+export function RirukaAvatar({ mood, line, glasses, aura = false, onGlasses, onAura, onInteract }: {
+  mood: Mood; line: string; glasses: boolean; aura?: boolean; onGlasses: () => void; onAura?: () => void; onInteract: (hold?: boolean) => void;
 }) {
   const gesture = useRef<{ id: number; x: number; y: number; timeout: number; held: boolean } | null>(null);
   const pointer = useRef<[number, number]>([0, 0]);
@@ -51,7 +51,7 @@ export function RirukaAvatar({ mood, line, glasses, onGlasses, onInteract }: {
   }
 
   return (
-    <div className="avatar" data-mood={mood}>
+    <div className="avatar" data-mood={mood} data-aura={aura ? "true" : "false"}>
       <div className="portrait-heading">
         <span><span className="signal-dot" /> آواتار تعاملی</span>
         <span lang="en" dir="ltr">RIRUKA / LIVE PORTRAIT</span>
@@ -74,6 +74,7 @@ export function RirukaAvatar({ mood, line, glasses, onGlasses, onInteract }: {
             {mood === "HAPPY" ? <Sparkles size={14} /> : <Hand size={14} />} نگه‌داشتن
           </button>
           <button className="hold-action" type="button" onClick={onGlasses} aria-label="عینک ریروکا" aria-pressed={glasses}><Glasses size={16} /> عینک</button>
+          {onAura && <button className="hold-action" type="button" onClick={onAura} aria-label="هالهٔ نوری ریروکا" aria-pressed={aura}><WandSparkles size={15} /> هاله</button>}
         </div>
       </div>
     </div>

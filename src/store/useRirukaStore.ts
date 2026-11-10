@@ -12,22 +12,25 @@ type Saved = {
   sound: boolean;
   tasks: Task[];
   glasses: boolean;
+  aura: boolean;
 };
 
 type RirukaState = Saved & {
   profile: string | null;
   openProfile: (id: string) => void;
   addMessage: (message: Message) => void;
+  removeMessage: (id: string) => void;
   clearChat: () => void;
   addAffection: (points: number) => void;
   toggleSound: () => void;
   toggleGlasses: () => void;
+  toggleAura: () => void;
   addTask: (task: Task) => boolean;
   removeTask: (profile: string, id: string) => void;
   updateTask: (profile: string, id: string, patch: Partial<Task> | ((task: Task) => Partial<Task>)) => void;
 };
 
-const initial: Saved = { version: 1, sessionId: "", messages: [], affection: 0, sound: false, tasks: [], glasses: false };
+const initial: Saved = { version: 1, sessionId: "", messages: [], affection: 0, sound: false, tasks: [], glasses: false, aura: false };
 const key = (id: string) => "riruka:v1:" + id;
 
 function isMessage(value: unknown): value is Message {
@@ -50,6 +53,7 @@ function readProfile(id: string): Saved {
         ? Math.max(0, Math.min(100, Math.round(item.affection))) : 0,
       sound: item.sound === true,
       glasses: item.glasses === true,
+      aura: item.aura === true,
       tasks: Array.isArray(item.tasks) ? item.tasks.filter((task): task is Task =>
         Boolean(task && UUID.test(task.id) && taskKinds.includes(task.kind) && taskStatuses.includes(task.status) &&
           typeof task.at === "number" && Number.isFinite(task.at) && typeof task.title === "string" &&
@@ -59,6 +63,7 @@ function readProfile(id: string): Saved {
           task.items.every((part) => part && typeof part.text === "string" && typeof part.checked === "boolean"))
       ).slice(0, TASK_LIMIT).map((task) => ({
         ...task,
+        pinned: task.pinned === true,
         status: task.status === "queued" && !task.ticket ? "unknown" : task.status,
         activity: Array.isArray(task.activity) ? task.activity.filter(isRunActivity).slice(-MAX_ACTIVITY) : undefined,
         controls: undefined,
@@ -78,10 +83,14 @@ export const useRirukaStore = create<RirukaState>((set, get) => ({
   addMessage: (message) => set(({ messages }) => ({
     messages: [...messages.filter(({ id }) => id !== message.id), message].slice(-DEVICE_LIMIT),
   })),
+  removeMessage: (id) => set(({ messages }) => ({
+    messages: messages.filter((message) => message.id !== id),
+  })),
   clearChat: () => set({ messages: [], sessionId: crypto.randomUUID() }),
-  addAffection: (points) => set(({ affection }) => ({ affection: Math.min(100, affection + points) })),
+  addAffection: (points) => set(({ affection }) => ({ affection: Math.max(0, Math.min(100, affection + points)) })),
   toggleSound: () => set(({ sound }) => ({ sound: !sound })),
   toggleGlasses: () => set(({ glasses }) => ({ glasses: !glasses })),
+  toggleAura: () => set(({ aura }) => ({ aura: !aura })),
   addTask: (task) => {
     if (!get().profile || get().tasks.length >= TASK_LIMIT) return false;
     set(({ tasks }) => ({ tasks: [task, ...tasks] }));
@@ -97,10 +106,10 @@ export const useRirukaStore = create<RirukaState>((set, get) => ({
   },
 }));
 
-useRirukaStore.subscribe(({ profile, version, sessionId, messages, affection, sound, tasks, glasses }) => {
+useRirukaStore.subscribe(({ profile, version, sessionId, messages, affection, sound, tasks, glasses, aura }) => {
   if (!profile) return;
   try {
-    localStorage.setItem(key(profile), JSON.stringify({ version, sessionId, messages, affection, sound, tasks: tasks.map(({ controls: _controls, ...task }) => task), glasses }));
+    localStorage.setItem(key(profile), JSON.stringify({ version, sessionId, messages, affection, sound, tasks: tasks.map(({ controls: _controls, ...task }) => task), glasses, aura }));
   } catch {
     // The session continues in memory when storage is blocked or full.
   }

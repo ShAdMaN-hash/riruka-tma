@@ -6,11 +6,17 @@ export function mockReply(messages: Turn[]) {
   const variants = messages.filter(({ role }) => role === "user").length % 2;
   let reply: string;
 
-  if (/کدنویسی|کد\s|کد$|پایتون|javascript|typescript|برنامه|\bcode\b/i.test(input)) {
+  if (/کدنویسی|کد\s|کد$|پایتون|javascript|typescript|برنامه[‌\s]*نویسی|\bcode\b/i.test(input)) {
     reply = [
       "باشه شادمان، یک مثال کوچیک می‌زنم. این تابع یک سلام فارسی می‌سازه.",
-      "\`\`\`ts\nfunction greet(name: string): string {\n  return \`سلام، \${name}!\`;\n}\n\ngreet(\"شادمان\");\n\`\`\`",
+      "```ts\nfunction greet(name: string): string {\n  return `سلام، ${name}!`;\n}\n\ngreet(\"شادمان\");\n```",
       "در حالت آزمایشی این نمونه آماده‌ست. برای جواب به مسئلهٔ خودت، مدل زنده رو وصل کن.",
+    ].join("\n\n");
+  } else if (/میز کار|چک‌لیست|مأموریت|یادداشت|اولویت|برنامه‌ریزی/i.test(input)) {
+    reply = [
+      "هومف… دیدم چی فرستادی شادمان! بذار سریع برات دسته‌بندیش کنم:",
+      "- **گام اول:** مهم‌ترین کار امروز رو توی میز کار «سنجاق» کن تا جلوی چشمت بمونه.\n- **گام دوم:** کارهای کوچیک‌تر رو تیک بزن تا ذهنت خلوت بشه.\n- **گام سوم:** هر جا گیر کردی، متن یادداشت رو بیار تا با هم مرورش کنیم.",
+      "بگو کدوم موردش از همه فوری‌تره تا از همون شروع کنیم؟",
     ].join("\n\n");
   } else if (mood === "YANDERE") {
     reply = [

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { localTask, matchesTask, taskMarkdown, taskProgress, taskStatusLabel, taskTitle } from "../src/lib/tasks.ts";
+import { chatMarkdown, matchesMessage } from "../src/lib/chat.ts";
+import { localTask, matchesTask, sortTasks, taskMarkdown, taskProgress, taskPromptForChat, taskStatusLabel, taskTitle } from "../src/lib/tasks.ts";
 
 test("builds a deduplicated checklist from Persian numbered and bullet items", () => {
   const input = "۱. آماده‌سازی\n- مرور؛ 3. تمرین\n• مرور";
@@ -45,4 +46,21 @@ test("extracts explicit actions without turning descriptive notes into tasks", (
   result.items[0].checked = true;
   assert.match(taskMarkdown(task), /- \[x\] تست مسیر ورود/);
   assert.equal(taskProgress({ kind: "hermes", status: "draft" }), "draft");
+});
+
+test("sorts pinned tasks first and builds chat consultation prompt", () => {
+  const olderPinned = { id: "1", at: 100, pinned: true, title: "کار مهم", kind: "checklist", status: "done", input: "الف", output: "", items: [{ text: "گام اول", checked: false }] };
+  const newerUnpinned = { id: "2", at: 200, pinned: false, title: "کار عادی", kind: "checklist", status: "done", input: "ب", output: "", items: [] };
+  const sorted = sortTasks([newerUnpinned, olderPinned]);
+  assert.equal(sorted[0].id, "1");
+  assert.match(taskPromptForChat(olderPinned), /گام اول/);
+});
+
+test("searches and exports Persian chat messages to Markdown", () => {
+  const messages = [
+    { id: "1", role: "user", content: "سلام ریروکا، برنامهٔ شماره ۲", at: 1000 },
+    { id: "2", role: "assistant", content: "باشه شادمان، بررسی می‌کنیم.", at: 2000 },
+  ];
+  assert.equal(matchesMessage(messages[0], "شماره٢"), true);
+  assert.match(chatMarkdown(messages, "شادمان"), /# تاریخچهٔ گفت‌وگو با ریروکا/);
 });

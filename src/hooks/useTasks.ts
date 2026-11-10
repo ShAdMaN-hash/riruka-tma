@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CHECKLIST_ITEM_LIMIT, CHECKLIST_LIMIT, hermesAccessStates, isActive, localTask, MAX_TASK_INPUT, taskStatuses, taskTitle, type HermesAccess, type RunControl, type RunDecision, type Task, type TaskKind, type TaskStatus } from "@/lib/tasks";
+import { CHECKLIST_ITEM_LIMIT, CHECKLIST_LIMIT, hermesAccessStates, isActive, localTask, MAX_TASK_INPUT, sortTasks, taskStatuses, taskTitle, type HermesAccess, type RunControl, type RunDecision, type Task, type TaskKind, type TaskStatus } from "@/lib/tasks";
 import { useRirukaStore } from "@/store/useRirukaStore";
 
 type Reply = { status: TaskStatus; ticket?: string; output?: string; note?: string; controls?: RunControl[] };
@@ -139,7 +139,7 @@ export function useTasks(profile: string | null, initData: string, visible: bool
     const input = raw.trim();
     if (!profile || !input || input.length > MAX_TASK_INPUT) return;
     const task: Task = { id: crypto.randomUUID(), at: Date.now(), kind, input, title: taskTitle(input),
-      status: kind === "hermes" ? "draft" : "done", output: "", items: [] };
+      status: kind === "hermes" ? "draft" : "done", output: "", items: [], pinned: false };
     if (kind !== "hermes") Object.assign(task, localTask(kind, input));
     if (kind === "workflow") task.activity = [
       { id: "local-source", at: task.at, kind: "started", detail: "خواندن یادداشت" },
@@ -205,6 +205,35 @@ export function useTasks(profile: string | null, initData: string, visible: bool
       ? {} : { items: [...current.items, { text, checked: false }], note: current.items.length ? current.note : undefined });
   }
 
+  function removeItem(task: Task, index: number) {
+    if (!profile) return;
+    useRirukaStore.getState().updateTask(profile, task.id, (current) => ({
+      items: current.items.filter((_, i) => i !== index),
+    }));
+  }
+
+  function toggleAll(task: Task) {
+    if (!profile || !task.items.length) return;
+    const nextState = !task.items.every((item) => item.checked);
+    useRirukaStore.getState().updateTask(profile, task.id, (current) => ({
+      items: current.items.map((item) => ({ ...item, checked: nextState })),
+    }));
+  }
+
+  function clearChecked(task: Task) {
+    if (!profile) return;
+    useRirukaStore.getState().updateTask(profile, task.id, (current) => ({
+      items: current.items.filter((item) => !item.checked),
+    }));
+  }
+
+  function togglePin(task: Task) {
+    if (!profile) return;
+    useRirukaStore.getState().updateTask(profile, task.id, (current) => ({
+      pinned: !current.pinned,
+    }));
+  }
+
   function remove(task: Task) {
     if (profile) useRirukaStore.getState().removeTask(profile, task.id);
   }
@@ -216,5 +245,10 @@ export function useTasks(profile: string | null, initData: string, visible: bool
       ? { input, title: taskTitle(input), note: undefined } : {});
   }
 
-  return { tasks: profile ? tasks : [], add, addItem, control, start, respond, remove, editDraft, toggle, access: accessState, recheck: () => setAttempt((count) => count + 1) };
+  return {
+    tasks: profile ? sortTasks(tasks) : [],
+    add, addItem, removeItem, toggleAll, clearChecked, togglePin,
+    control, start, respond, remove, editDraft, toggle,
+    access: accessState, recheck: () => setAttempt((count) => count + 1),
+  };
 }
